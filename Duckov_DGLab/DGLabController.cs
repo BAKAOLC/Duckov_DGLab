@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DGLabCSharp;
 using DGLabCSharp.Enums;
@@ -10,8 +11,11 @@ using UnityEngine;
 
 namespace Duckov_DGLab
 {
+    // ReSharper disable once InconsistentNaming
     public class DGLabController : IDisposable
     {
+        private readonly object _lock = new();
+        private readonly List<CancellationTokenSource> _sendingTasks = [];
         private DGLabCSharp.DGLabController? _controller;
         private bool _disposed;
         private DGLabWebSocketServer? _server;
@@ -20,6 +24,7 @@ namespace Duckov_DGLab
 
         public bool HasConnectedApps => _controller?.GetConnectedApps().Count > 0;
 
+        // ReSharper disable once InconsistentNaming
         public string QRCodePath { get; private set; } = "";
 
         public void Dispose()
@@ -38,11 +43,11 @@ namespace Duckov_DGLab
                 IsInitialized = false;
                 _disposed = true;
 
-                Debug.Log("DGLabController disposed.");
+                ModLogger.Log("DGLabController disposed.");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error disposing DGLabController: {ex.Message}");
+                ModLogger.LogError($"Error disposing DGLabController: {ex.Message}");
             }
         }
 
@@ -50,7 +55,7 @@ namespace Duckov_DGLab
         {
             if (IsInitialized)
             {
-                Debug.LogWarning("DGLabController is already initialized.");
+                ModLogger.LogWarning("DGLabController is already initialized.");
                 return true;
             }
 
@@ -58,15 +63,15 @@ namespace Duckov_DGLab
             {
                 if (!DGLabWebSocketServer.IsPortAvailable(port))
                 {
-                    Debug.LogWarning($"Port {port} is not available. Finding an available port...");
+                    ModLogger.LogWarning($"Port {port} is not available. Finding an available port...");
                     port = DGLabWebSocketServer.FindAvailablePort();
                     if (port == -1)
                     {
-                        Debug.LogError("No available ports found.");
+                        ModLogger.LogError("No available ports found.");
                         return false;
                     }
 
-                    Debug.Log($"Using available port {port}.");
+                    ModLogger.Log($"Using available port {port}.");
                 }
 
                 _server = new(port);
@@ -74,50 +79,50 @@ namespace Duckov_DGLab
 
                 SubscribeToServerEvents();
 
-                await _server.StartAsync();
+                await _server.StartAsync().ConfigureAwait(false);
 
                 var localIP = NetworkUtils.GetLocalIPAddress();
                 if (!string.IsNullOrEmpty(localIP))
                 {
-                    Debug.Log($"DGLab WebSocket Server started at ws://{localIP}:{port}");
-                    Debug.Log($"Controller ID: ${_server.ControllerClientId}");
-                    Debug.Log($"Connect URL: ws://{localIP}:{port}/{_server.ControllerClientId}");
+                    ModLogger.Log($"DGLab WebSocket Server started at ws://{localIP}:{port}");
+                    ModLogger.Log($"Controller ID: ${_server.ControllerClientId}");
+                    ModLogger.Log($"Connect URL: ws://{localIP}:{port}/{_server.ControllerClientId}");
 
                     try
                     {
                         QRCodePath = Path.Combine(Application.persistentDataPath, "dglab_qr.png");
                         QRCodeGenerator.GenerateConnectionQRFile(localIP, port, _server.ControllerClientId, QRCodePath);
-                        Debug.Log($"QR code generated at: {QRCodePath}");
+                        ModLogger.Log($"QR code generated at: {QRCodePath}");
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogError($"Error generating QR code: {ex.Message}");
+                        ModLogger.LogError($"Error generating QR code: {ex.Message}");
                         try
                         {
                             QRCodeGenerator.GenerateConnectionQRFile(localIP, port, _server.ControllerClientId);
                             QRCodePath = Path.Combine(Directory.GetCurrentDirectory(), "dglab_connection_qr.png");
-                            Debug.Log($"QR code generated at current directory: {QRCodePath}");
+                            ModLogger.Log($"QR code generated at current directory: {QRCodePath}");
                         }
                         catch (Exception innerEx)
                         {
-                            Debug.LogError($"Failed to generate QR code in current directory: {innerEx.Message}");
+                            ModLogger.LogError($"Failed to generate QR code in current directory: {innerEx.Message}");
                         }
                     }
                 }
                 else
                 {
-                    Debug.LogError("Failed to retrieve local IP address.");
-                    Debug.Log($"Connect URL: ws://YOUR_IP:{port}/{_server.ControllerClientId}");
+                    ModLogger.LogError("Failed to retrieve local IP address.");
+                    ModLogger.Log($"Connect URL: ws://YOUR_IP:{port}/{_server.ControllerClientId}");
                 }
 
                 IsInitialized = true;
-                Debug.Log("DGLabController initialized successfully.");
-                Debug.Log("Waiting for DGLab apps to connect...");
+                ModLogger.Log("DGLabController initialized successfully.");
+                ModLogger.Log("Waiting for DGLab apps to connect...");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error initializing DGLabController: {ex.Message}");
+                ModLogger.LogError($"Error initializing DGLabController: {ex.Message}");
                 return false;
             }
         }
@@ -129,54 +134,55 @@ namespace Duckov_DGLab
             _server.ClientConnected += (_, args) =>
             {
                 var (clientId, type, ipAddress, port) = args;
-                Debug.Log($"New {type} connected - ID: {clientId[..8]}... From {ipAddress}:{port}");
+                ModLogger.Log($"New {type} connected - ID: {clientId[..8]}... From {ipAddress}:{port}");
             };
 
             _server.ClientDisconnected += (_, clientId) =>
             {
-                Debug.Log($"Client disconnected - ID: {clientId[..8]}...");
+                ModLogger.Log($"Client disconnected - ID: {clientId[..8]}...");
             };
 
-            _server.ServerError += (_, ex) => { Debug.LogError($"Server error: {ex.Message}"); };
+            _server.ServerError += (_, ex) => { ModLogger.LogError($"Server error: {ex.Message}"); };
 
             _server.ErrorOccurred += (_, args) =>
             {
                 var (clientId, ex) = args;
-                Debug.LogError($"Error with client {clientId[..8]}... : {ex.Message}");
+                ModLogger.LogError($"Error with client {clientId[..8]}... : {ex.Message}");
             };
 
             _server.MessageHandler.BindingSucceeded += (_, args) =>
             {
                 var (clientId, message) = args;
-                Debug.Log($"Binding succeeded for client {clientId[..8]}... : {message}");
+                ModLogger.Log($"Binding succeeded for client {clientId[..8]}... : {message}");
             };
 
             _server.MessageHandler.BindingFailed += (_, args) =>
             {
                 var (clientId, message) = args;
-                Debug.LogError($"Binding failed for client {clientId[..8]}... : {message}");
+                ModLogger.LogError($"Binding failed for client {clientId[..8]}... : {message}");
             };
         }
 
-        public async Task<bool> SendWaveAsync(WaveType waveType, Channel channel, int duration = 3)
+        public async Task<bool> SendCustomWaveAsync(string waveDataJson, Channel channel,
+            int duration = 3000, int punishmentTimesInSecond = 1)
         {
             if (!IsInitialized || _server is null || _controller is null)
             {
-                Debug.LogError("DGLabController is not initialized.");
+                ModLogger.LogError("DGLabController is not initialized.");
                 return false;
             }
 
             var apps = _controller.GetConnectedApps();
             if (apps.Count == 0)
             {
-                Debug.LogWarning("No connected DGLab apps to send wave to.");
+                ModLogger.LogWarning("No connected DGLab apps to send wave to.");
                 return false;
             }
 
             var boundApps = _server.ClientManager.GetControllerBoundApps(_server.ControllerClientId);
             if (boundApps.Count == 0)
             {
-                Debug.LogWarning("No bound DGLab apps to send wave to.");
+                ModLogger.LogWarning("No bound DGLab apps to send wave to.");
                 return false;
             }
 
@@ -185,54 +191,88 @@ namespace Duckov_DGLab
                 var targetApps = apps.Where(app => boundApps.Any(boundApp => boundApp.Contains(app.Id))).ToArray();
                 if (targetApps.Length == 0)
                 {
-                    Debug.LogWarning("No bound DGLab apps found among connected apps.");
+                    ModLogger.LogWarning("No bound DGLab apps found among connected apps.");
                     return false;
                 }
 
-                const int punishmentTime = 1;
-                var totalSends = punishmentTime * duration;
-                const int timeSpace = 1000 / punishmentTime;
+                var messageContent = $"{channel.ToChannelString()}:{waveDataJson}";
 
-                var waveData = WaveData.GetWaveDataJson(waveType);
-                var messageContent = $"{channel.ToChannelString()}:{waveData}";
+                var timeSpace = 1000.0 / punishmentTimesInSecond;
+                var totalSends = Convert.ToInt32(Math.Max(1, Math.Floor(duration / timeSpace)));
 
                 var successCount = 0;
-
-                for (var i = 0; i < totalSends; i++)
+                var ctx = new CancellationTokenSource();
+                lock (_lock)
                 {
-                    var tasks = targetApps.Select(app =>
-                    {
-                        var message = new ClientMessage(messageContent, duration, channel, _server.ControllerClientId,
-                            app.Id);
-                        return _server.SendMessageToClientAsync(app.Id, message);
-                    }).ToArray();
+                    _sendingTasks.Add(ctx);
+                }
 
-                    var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-                    var currentSuccessCount = results.Count(result => result);
-
-                    if (i == 0)
+                var tasks = targetApps.Select(app => Task.Run(async () =>
+                {
+                    var message = new ClientMessage(messageContent, duration, channel,
+                        _server.ControllerClientId, app.Id);
+                    for (var i = 0; i < totalSends; i++)
                     {
-                        successCount = currentSuccessCount;
-                        Debug.Log(
-                            $"Sent {waveType} wave to {successCount}/{targetApps.Length} apps on {channel} channel for {duration} seconds");
+                        try
+                        {
+                            await _server.SendMessageToClientAsync(app.Id, message).ConfigureAwait(false);
+                            if (i == 0)
+                            {
+                                Interlocked.Increment(ref successCount);
+                                ModLogger.Log(
+                                    $"Successfully sent custom wave to app {app.Id[..8]}... on {channel} channel for {duration} ms");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            ModLogger.LogError(
+                                $"Error sending custom wave to app {app.Id[..8]}...: {ex.Message}");
+                            break;
+                        }
+
+                        if (i < totalSends - 1) await Task.Delay((int)timeSpace, ctx.Token).ConfigureAwait(false);
                     }
+                }, ctx.Token)).ToArray();
 
-                    if (i < totalSends - 1) await Task.Delay(timeSpace).ConfigureAwait(false);
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+
+                lock (_lock)
+                {
+                    _sendingTasks.Remove(ctx);
                 }
 
                 return successCount > 0;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error sending wave: {ex.Message}");
+                ModLogger.LogError($"Error sending custom wave: {ex.Message}");
                 return false;
             }
         }
 
-        public async Task<bool> SendWaveToAllChannelsAsync(WaveType waveType, int duration = 3)
+        public async Task<bool> SendWaveAsync(WaveType waveType, Channel channel,
+            int duration = 3000, int punishmentTimesInSecond = 1)
         {
-            var taskA = SendWaveAsync(waveType, Channel.A, duration);
-            var taskB = SendWaveAsync(waveType, Channel.B, duration);
+            var waveDataJson = WaveData.GetWaveDataJson(waveType);
+            return await SendCustomWaveAsync(waveDataJson, channel, duration, punishmentTimesInSecond)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<bool> SendCustomWaveToAllChannelsAsync(string waveDataJson,
+            int duration = 3000, int punishmentTimesInSecond = 1)
+        {
+            var taskA = SendCustomWaveAsync(waveDataJson, Channel.A, duration, punishmentTimesInSecond);
+            var taskB = SendCustomWaveAsync(waveDataJson, Channel.B, duration, punishmentTimesInSecond);
+
+            var results = await Task.WhenAll(taskA, taskB).ConfigureAwait(false);
+            return results.Any(result => result);
+        }
+
+        public async Task<bool> SendWaveToAllChannelsAsync(WaveType waveType,
+            int duration = 3000, int punishmentTimesInSecond = 1)
+        {
+            var taskA = SendWaveAsync(waveType, Channel.A, duration, punishmentTimesInSecond);
+            var taskB = SendWaveAsync(waveType, Channel.B, duration, punishmentTimesInSecond);
 
             var results = await Task.WhenAll(taskA, taskB).ConfigureAwait(false);
             return results.Any(result => result);
@@ -240,6 +280,12 @@ namespace Duckov_DGLab
 
         public async Task<bool> EmergencyStopAsync()
         {
+            lock (_lock)
+            {
+                _sendingTasks.ForEach(cts => cts.Cancel());
+                _sendingTasks.Clear();
+            }
+
             if (!IsInitialized || _server is null || _controller is null) return false;
 
             var apps = _controller.GetConnectedApps();
@@ -284,15 +330,15 @@ namespace Duckov_DGLab
                 var success = Array.TrueForAll(results, result => result);
 
                 if (success)
-                    Debug.Log("Emergency stop sent to all connected apps successfully.");
+                    ModLogger.Log("Emergency stop sent to all connected apps successfully.");
                 else
-                    Debug.LogWarning("Emergency stop sent to some apps, but failed for others.");
+                    ModLogger.LogWarning("Emergency stop sent to some apps, but failed for others.");
 
                 return success;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error during emergency stop: {ex.Message}");
+                ModLogger.LogError($"Error during emergency stop: {ex.Message}");
                 return false;
             }
         }

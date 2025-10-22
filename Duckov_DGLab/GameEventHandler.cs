@@ -1,12 +1,12 @@
 ﻿using System;
+using DGLabCSharp;
 using DGLabCSharp.Enums;
-using UnityEngine;
 
 namespace Duckov_DGLab
 {
     public class GameEventHandler(DGLabController dgLabController)
     {
-        private const int DamageDebounceMs = 1000;
+        private const int DamageDebounceMs = 200;
 
         private bool _active = true;
 
@@ -18,12 +18,13 @@ namespace Duckov_DGLab
             set
             {
                 _active = value;
-                Debug.Log($"GameEventHandler active state set to: {_active}");
+                ModLogger.Log($"GameEventHandler active state set to: {_active}");
             }
         }
 
         public void Load()
         {
+            Unload();
             LevelManager.OnAfterLevelInitialized += OnInitialize;
         }
 
@@ -47,15 +48,19 @@ namespace Duckov_DGLab
 
                 _lastDamageTime = currentTime;
 
-                Debug.Log($"Player took damage: {damageInfo.GenerateDescription()}");
+                ModLogger.Log($"Player took damage: {damageInfo.GenerateDescription()}");
 
-                var (waveType, duration) = GetDamageResponse(damageInfo.damageValue);
+                var hurtWaveName = ModConfig.HurtWaveType;
+                var hurtDuration = ModConfig.HurtDuration;
+                var wave = string.IsNullOrWhiteSpace(hurtWaveName)
+                    ? WaveData.GetWaveDataJson(WaveType.Type1)
+                    : JsonSerializerFactory.Instance.Serialize(CustomWaveManager.GetWavesByName(hurtWaveName));
 
-                await dgLabController.SendWaveToAllChannelsAsync(waveType, duration).ConfigureAwait(false);
+                await dgLabController.SendCustomWaveToAllChannelsAsync(wave, hurtDuration).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error handling player damage event: {ex}");
+                ModLogger.LogError($"Error handling player damage event: {ex}");
             }
         }
 
@@ -66,16 +71,19 @@ namespace Duckov_DGLab
 
             try
             {
-                Debug.Log("Player has died.");
+                ModLogger.Log("Player has died.");
 
-                const WaveType deathWaveType = WaveType.Type3;
-                const int deathDuration = 5;
+                var deathWaveType = ModConfig.DeathWaveType;
+                var deathDuration = ModConfig.DeathDuration;
+                var wave = string.IsNullOrWhiteSpace(deathWaveType)
+                    ? WaveData.GetWaveDataJson(WaveType.Type3)
+                    : JsonSerializerFactory.Instance.Serialize(CustomWaveManager.GetWavesByName(deathWaveType));
 
-                await dgLabController.SendWaveToAllChannelsAsync(deathWaveType, deathDuration).ConfigureAwait(false);
+                await dgLabController.SendCustomWaveToAllChannelsAsync(wave, deathDuration).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error handling player death event: {ex}");
+                ModLogger.LogError($"Error handling player death event: {ex}");
             }
         }
 
@@ -84,22 +92,19 @@ namespace Duckov_DGLab
             var mainCharacterControl = LevelManager.Instance.MainCharacter;
             if (!mainCharacterControl)
             {
-                Debug.LogWarning("MainCharacterControl not found during initialization.");
+                ModLogger.LogWarning("MainCharacterControl not found during initialization.");
                 return;
             }
 
+            // remove existing listeners to avoid duplicates
+            mainCharacterControl.Health.OnHurtEvent.RemoveListener(OnPlayerHurt);
+            mainCharacterControl.Health.OnDeadEvent.RemoveListener(OnPlayerDeath);
+
+            // add listeners
             mainCharacterControl.Health.OnHurtEvent.AddListener(OnPlayerHurt);
             mainCharacterControl.Health.OnDeadEvent.AddListener(OnPlayerDeath);
 
-            Debug.Log("GameEventHandler initialized and event listeners registered.");
-        }
-
-        private static (WaveType waveType, int duration) GetDamageResponse(float damageAmount)
-        {
-            return damageAmount switch
-            {
-                _ => (WaveType.Type1, 1),
-            };
+            ModLogger.Log("GameEventHandler initialized and event listeners registered.");
         }
     }
 }
