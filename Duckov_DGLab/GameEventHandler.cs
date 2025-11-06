@@ -50,13 +50,14 @@ namespace Duckov_DGLab
 
                 ModLogger.Log($"Player took damage: {damageInfo.GenerateDescription()}");
 
-                var hurtWaveName = ModConfig.HurtWaveType;
-                var hurtDuration = ModConfig.HurtDuration;
+                var config = ModBehaviour.Instance?.Config;
+                var hurtWaveName = config?.HurtWaveType;
+                var hurtDuration = config?.HurtDuration ?? 1;
                 var wave = string.IsNullOrWhiteSpace(hurtWaveName)
                     ? WaveData.GetWaveDataJson(WaveType.Type1)
                     : JsonSerializerFactory.Instance.Serialize(CustomWaveManager.GetWavesByName(hurtWaveName));
 
-                await dgLabController.SendCustomWaveToAllChannelsAsync(wave, hurtDuration).ConfigureAwait(false);
+                await dgLabController.SendCustomWaveToAllChannelsAsync(wave, hurtDuration * 1000).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -73,13 +74,15 @@ namespace Duckov_DGLab
             {
                 ModLogger.Log("Player has died.");
 
-                var deathWaveType = ModConfig.DeathWaveType;
-                var deathDuration = ModConfig.DeathDuration;
+                var config = ModBehaviour.Instance?.Config;
+                var deathWaveType = config?.DeathWaveType;
+                var deathDuration = config?.DeathDuration ?? 3;
                 var wave = string.IsNullOrWhiteSpace(deathWaveType)
                     ? WaveData.GetWaveDataJson(WaveType.Type3)
                     : JsonSerializerFactory.Instance.Serialize(CustomWaveManager.GetWavesByName(deathWaveType));
 
-                await dgLabController.SendCustomWaveToAllChannelsAsync(wave, deathDuration).ConfigureAwait(false);
+                await dgLabController.SendCustomWaveToAllChannelsAsync(wave, deathDuration * 1000)
+                    .ConfigureAwait(false);
             }
             catch (Exception ex)
             {

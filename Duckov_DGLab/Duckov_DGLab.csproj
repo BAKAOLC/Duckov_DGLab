@@ -16,20 +16,23 @@
 		<DuckovPath>E:\SteamLibrary\steamapps\common\Escape from Duckov</DuckovPath>
 	</PropertyGroup>
 
-    <ItemGroup>
-        <Reference Include="$(DuckovPath)\Duckov_Data\Managed\TeamSoda.*">
-            <Private>False</Private>
-        </Reference>
-        <Reference Include="$(DuckovPath)\Duckov_Data\Managed\ItemStatsSystem.dll">
-            <Private>False</Private>
-        </Reference>
-        <Reference Include="$(DuckovPath)\Duckov_Data\Managed\Unity*">
-            <Private>False</Private>
-        </Reference>
-        <Reference Include="DGLabCSharp">
-            <HintPath>..\lib\DGLabCSharp.dll</HintPath>
-        </Reference>
-    </ItemGroup>
+	<ItemGroup>
+		<Reference Include="$(DuckovPath)\Duckov_Data\Managed\TeamSoda.*">
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="$(DuckovPath)\Duckov_Data\Managed\ItemStatsSystem.dll">
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="$(DuckovPath)\Duckov_Data\Managed\Newtonsoft.Json.dll">
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="$(DuckovPath)\Duckov_Data\Managed\Unity*">
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="DGLabCSharp">
+			<HintPath>..\lib\DGLabCSharp.dll</HintPath>
+		</Reference>
+	</ItemGroup>
 
 	<ItemGroup>
 		<None Update="info.ini">
