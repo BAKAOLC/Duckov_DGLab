@@ -8,7 +8,6 @@ namespace Duckov_DGLab.Configs
         public string? HurtWaveType { get; set; }
         public int DeathDuration { get; set; } = 3;
         public string? DeathWaveType { get; set; }
-        public int DefaultStrength { get; set; }
         public KeyCode ToggleKey { get; set; } = KeyCode.N;
 
         public override void LoadDefault()
@@ -17,7 +16,6 @@ namespace Duckov_DGLab.Configs
             HurtWaveType = null;
             DeathDuration = 3;
             DeathWaveType = null;
-            DefaultStrength = 0;
             ToggleKey = KeyCode.N;
         }
 
@@ -39,13 +37,6 @@ namespace Duckov_DGLab.Configs
                 changed = true;
             }
 
-            if (DefaultStrength is < 0 or > 100)
-            {
-                ModLogger.LogWarning($"Invalid DefaultStrength: {DefaultStrength}, resetting to default (0)");
-                DefaultStrength = 0;
-                changed = true;
-            }
-
             return changed;
         }
         // ReSharper restore InvertIf
@@ -57,7 +48,6 @@ namespace Duckov_DGLab.Configs
             HurtWaveType = otherConfig.HurtWaveType;
             DeathDuration = otherConfig.DeathDuration;
             DeathWaveType = otherConfig.DeathWaveType;
-            DefaultStrength = otherConfig.DefaultStrength;
             ToggleKey = otherConfig.ToggleKey;
         }
     }

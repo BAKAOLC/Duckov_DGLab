@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using DGLabCSharp.Enums;
 using Duckov_DGLab.Configs;
 using UnityEngine;
 using UnityEngine.Events;
@@ -18,11 +20,13 @@ namespace Duckov_DGLab.MonoBehaviours
         private CharacterInputControl? _charInput;
         private Button? _closeButton;
         private DGLabConfig? _config;
+        private Text? _connectedAppsText;
+        private Text? _connectionStatusText;
+        private int _currentPage;
+        private Text? _currentStrengthText;
         private InputField? _deathDurationInput;
         private Slider? _deathDurationSlider;
         private Dropdown? _deathWaveTypeDropdown;
-        private InputField? _defaultStrengthInput;
-        private Slider? _defaultStrengthSlider;
         private InputField? _hurtDurationInput;
         private Slider? _hurtDurationSlider;
         private Dropdown? _hurtWaveTypeDropdown;
@@ -31,6 +35,16 @@ namespace Duckov_DGLab.MonoBehaviours
         private GameObject? _overlay;
         private GameObject? _panelRoot;
         private PlayerInput? _playerInput;
+        private RawImage? _qrCodeImage;
+        private GameObject? _qrCodePanel;
+        private GameObject? _settingsPage;
+        private Button? _settingsTabButton;
+        private GameObject? _statusPage;
+        private Button? _statusTabButton;
+        private InputField? _strengthAInput;
+        private Slider? _strengthASlider;
+        private InputField? _strengthBInput;
+        private Slider? _strengthBSlider;
         private KeyCode _toggleKey = KeyCode.N;
         private Button? _toggleKeyButton;
         private Text? _toggleKeyDisplayText;
@@ -159,8 +173,11 @@ namespace Duckov_DGLab.MonoBehaviours
             outline.effectDistance = new(2, -2);
 
             BuildTitle();
+            BuildTabs();
             BuildContent();
             BuildCloseButton();
+            _currentPage = 0;
+            SwitchPage(0);
         }
 
         private void BuildTitle()
@@ -184,33 +201,369 @@ namespace Duckov_DGLab.MonoBehaviours
             titleRect.sizeDelta = new(0, 40);
         }
 
+        private void BuildTabs()
+        {
+            if (_panelRoot == null) return;
+
+            var tabsArea = new GameObject("TabsArea", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            tabsArea.transform.SetParent(_panelRoot.transform, false);
+            var tabsRect = tabsArea.GetComponent<RectTransform>();
+            tabsRect.anchorMin = new(0, 1);
+            tabsRect.anchorMax = new(1, 1);
+            tabsRect.pivot = new(0.5f, 1);
+            tabsRect.anchoredPosition = new(0, -60);
+            tabsRect.sizeDelta = new(0, 40);
+
+            var tabsLayout = tabsArea.GetComponent<HorizontalLayoutGroup>();
+            tabsLayout.spacing = 10;
+            tabsLayout.padding = new(20, 20, 0, 0);
+            tabsLayout.childControlWidth = false;
+            tabsLayout.childControlHeight = true;
+            tabsLayout.childForceExpandWidth = false;
+            tabsLayout.childForceExpandHeight = true;
+
+            _settingsTabButton = CreateTabButton(tabsArea, "设置", 0);
+            _statusTabButton = CreateTabButton(tabsArea, "状态", 1);
+        }
+
+        private Button CreateTabButton(GameObject parent, string text, int pageIndex)
+        {
+            var buttonObj = new GameObject($"TabButton_{text}", typeof(RectTransform), typeof(Image), typeof(Button));
+            buttonObj.transform.SetParent(parent.transform, false);
+            var buttonImage = buttonObj.GetComponent<Image>();
+            buttonImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            var buttonRect = buttonObj.GetComponent<RectTransform>();
+            buttonRect.sizeDelta = new(120, 35);
+
+            var buttonText = new GameObject("Text", typeof(Text));
+            buttonText.transform.SetParent(buttonObj.transform, false);
+            var textComponent = buttonText.GetComponent<Text>();
+            textComponent.text = text;
+            textComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            textComponent.fontSize = 16;
+            textComponent.color = Color.white;
+            textComponent.alignment = TextAnchor.MiddleCenter;
+            var textRect = buttonText.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+
+            var button = buttonObj.GetComponent<Button>();
+            button.onClick.AddListener(() => SwitchPage(pageIndex));
+
+            return button;
+        }
+
         private void BuildContent()
         {
             if (_panelRoot == null || _config == null) return;
 
-            var contentArea = new GameObject("ContentArea", typeof(RectTransform), typeof(VerticalLayoutGroup));
+            var contentArea = new GameObject("ContentArea", typeof(RectTransform));
             contentArea.transform.SetParent(_panelRoot.transform, false);
             var contentRect = contentArea.GetComponent<RectTransform>();
             contentRect.anchorMin = new(0, 0);
             contentRect.anchorMax = new(1, 1);
-            contentRect.offsetMin = new(20, 60);
-            contentRect.offsetMax = new(-20, -60);
+            contentRect.offsetMin = new(20, 20);
+            contentRect.offsetMax = new(-20, -100);
 
-            var layoutGroup = contentArea.GetComponent<VerticalLayoutGroup>();
-            layoutGroup.padding = new(20, 20, 20, 20);
-            layoutGroup.spacing = 20;
-            layoutGroup.childAlignment = TextAnchor.UpperLeft;
-            layoutGroup.childControlWidth = true;
-            layoutGroup.childControlHeight = false;
-            layoutGroup.childForceExpandWidth = true;
-            layoutGroup.childForceExpandHeight = false;
+            _settingsPage = new("SettingsPage", typeof(RectTransform));
+            _settingsPage.transform.SetParent(contentArea.transform, false);
+            var settingsRect = _settingsPage.GetComponent<RectTransform>();
+            settingsRect.anchorMin = Vector2.zero;
+            settingsRect.anchorMax = Vector2.one;
+            settingsRect.sizeDelta = Vector2.zero;
 
-            BuildToggleKeySetting(contentArea);
-            BuildHurtDurationSetting(contentArea);
-            BuildHurtWaveTypeSetting(contentArea);
-            BuildDeathDurationSetting(contentArea);
-            BuildDeathWaveTypeSetting(contentArea);
-            BuildDefaultStrengthSetting(contentArea);
+            var settingsLayout = _settingsPage.AddComponent<VerticalLayoutGroup>();
+            settingsLayout.padding = new(20, 20, 20, 20);
+            settingsLayout.spacing = 20;
+            settingsLayout.childAlignment = TextAnchor.UpperLeft;
+            settingsLayout.childControlWidth = true;
+            settingsLayout.childControlHeight = false;
+            settingsLayout.childForceExpandWidth = true;
+            settingsLayout.childForceExpandHeight = false;
+
+            BuildToggleKeySetting(_settingsPage);
+            BuildHurtDurationSetting(_settingsPage);
+            BuildHurtWaveTypeSetting(_settingsPage);
+            BuildDeathDurationSetting(_settingsPage);
+            BuildDeathWaveTypeSetting(_settingsPage);
+
+            _statusPage = new("StatusPage", typeof(RectTransform));
+            _statusPage.transform.SetParent(contentArea.transform, false);
+            var statusRect = _statusPage.GetComponent<RectTransform>();
+            statusRect.anchorMin = Vector2.zero;
+            statusRect.anchorMax = Vector2.one;
+            statusRect.sizeDelta = Vector2.zero;
+
+            BuildStatusPage();
+        }
+
+        private void BuildStatusPage()
+        {
+            if (_statusPage == null) return;
+
+            var statusLayout = _statusPage.AddComponent<VerticalLayoutGroup>();
+            statusLayout.padding = new(20, 20, 20, 20);
+            statusLayout.spacing = 20;
+            statusLayout.childAlignment = TextAnchor.UpperLeft;
+            statusLayout.childControlWidth = true;
+            statusLayout.childControlHeight = false;
+            statusLayout.childForceExpandWidth = true;
+            statusLayout.childForceExpandHeight = false;
+
+            var connectionStatusRow = CreateSettingRow(_statusPage, "ConnectionStatusRow");
+            CreateLabel(connectionStatusRow, "连接状态:");
+            var connectionStatusLabel = new GameObject("ConnectionStatusLabel", typeof(Text));
+            connectionStatusLabel.transform.SetParent(connectionStatusRow.transform, false);
+            _connectionStatusText = connectionStatusLabel.GetComponent<Text>();
+            _connectionStatusText.text = "未初始化";
+            _connectionStatusText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            _connectionStatusText.fontSize = 14;
+            _connectionStatusText.color = Color.white;
+            _connectionStatusText.alignment = TextAnchor.MiddleLeft;
+            var connectionStatusRect = connectionStatusLabel.GetComponent<RectTransform>();
+            connectionStatusRect.sizeDelta = new(200, 0);
+
+            var connectedAppsRow = CreateSettingRow(_statusPage, "ConnectedAppsRow");
+            CreateLabel(connectedAppsRow, "已连接App数量:");
+            var connectedAppsLabel = new GameObject("ConnectedAppsLabel", typeof(Text));
+            connectedAppsLabel.transform.SetParent(connectedAppsRow.transform, false);
+            _connectedAppsText = connectedAppsLabel.GetComponent<Text>();
+            _connectedAppsText.text = "0";
+            _connectedAppsText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            _connectedAppsText.fontSize = 14;
+            _connectedAppsText.color = Color.white;
+            _connectedAppsText.alignment = TextAnchor.MiddleLeft;
+            var connectedAppsRect = connectedAppsLabel.GetComponent<RectTransform>();
+            connectedAppsRect.sizeDelta = new(200, 0);
+
+            var currentStrengthRow = CreateSettingRow(_statusPage, "CurrentStrengthRow");
+            CreateLabel(currentStrengthRow, "当前强度:");
+            var currentStrengthLabel = new GameObject("CurrentStrengthLabel", typeof(Text));
+            currentStrengthLabel.transform.SetParent(currentStrengthRow.transform, false);
+            _currentStrengthText = currentStrengthLabel.GetComponent<Text>();
+            _currentStrengthText.text = "未获取";
+            _currentStrengthText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            _currentStrengthText.fontSize = 14;
+            _currentStrengthText.color = Color.white;
+            _currentStrengthText.alignment = TextAnchor.MiddleLeft;
+            var currentStrengthRect = currentStrengthLabel.GetComponent<RectTransform>();
+            currentStrengthRect.sizeDelta = new(200, 0);
+
+            var strengthARow = CreateSettingRow(_statusPage, "StrengthARow");
+            CreateLabel(strengthARow, "通道A强度:");
+            _strengthASlider = CreateSlider(strengthARow, 0, 100, 0, OnStrengthAChanged);
+            _strengthAInput = CreateInputField(strengthARow, "0", OnStrengthAInputChanged);
+            CreateStepButtons(strengthARow, OnStrengthADecrease, OnStrengthAIncrease);
+
+            var strengthBRow = CreateSettingRow(_statusPage, "StrengthBRow");
+            CreateLabel(strengthBRow, "通道B强度:");
+            _strengthBSlider = CreateSlider(strengthBRow, 0, 100, 0, OnStrengthBChanged);
+            _strengthBInput = CreateInputField(strengthBRow, "0", OnStrengthBInputChanged);
+            CreateStepButtons(strengthBRow, OnStrengthBDecrease, OnStrengthBIncrease);
+
+            var qrCodeRow = CreateSettingRow(_statusPage, "QRCodeRow");
+            CreateLabel(qrCodeRow, "二维码:");
+            var qrCodeButtonObj = new GameObject("QRCodeButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            qrCodeButtonObj.transform.SetParent(qrCodeRow.transform, false);
+            var qrCodeButtonImage = qrCodeButtonObj.GetComponent<Image>();
+            qrCodeButtonImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            var qrCodeButtonRect = qrCodeButtonObj.GetComponent<RectTransform>();
+            qrCodeButtonRect.sizeDelta = new(150, 30);
+
+            var qrCodeButtonText = new GameObject("Text", typeof(Text));
+            qrCodeButtonText.transform.SetParent(qrCodeButtonObj.transform, false);
+            var qrCodeTextComponent = qrCodeButtonText.GetComponent<Text>();
+            qrCodeTextComponent.text = "显示二维码";
+            qrCodeTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            qrCodeTextComponent.fontSize = 14;
+            qrCodeTextComponent.color = Color.white;
+            qrCodeTextComponent.alignment = TextAnchor.MiddleCenter;
+            var qrCodeTextRect = qrCodeButtonText.GetComponent<RectTransform>();
+            qrCodeTextRect.anchorMin = Vector2.zero;
+            qrCodeTextRect.anchorMax = Vector2.one;
+            qrCodeTextRect.sizeDelta = Vector2.zero;
+
+            var qrCodeButton = qrCodeButtonObj.GetComponent<Button>();
+            qrCodeButton.onClick.AddListener(OnQRCodeButtonClicked);
+
+            BuildQRCodePanel();
+        }
+
+        private void BuildQRCodePanel()
+        {
+            if (_uiRoot == null) return;
+
+            _qrCodePanel = new("QRCodePanel", typeof(Image));
+            _qrCodePanel.transform.SetParent(_uiRoot.transform, false);
+            var panelImage = _qrCodePanel.GetComponent<Image>();
+            panelImage.color = new(0.1f, 0.12f, 0.15f, 0.98f);
+            var panelRect = _qrCodePanel.GetComponent<RectTransform>();
+            panelRect.anchorMin = new(0.5f, 0.5f);
+            panelRect.anchorMax = new(0.5f, 0.5f);
+            panelRect.pivot = new(0.5f, 0.5f);
+            panelRect.sizeDelta = new(400, 450);
+            panelRect.anchoredPosition = Vector2.zero;
+
+            var outline = _qrCodePanel.AddComponent<Outline>();
+            outline.effectColor = new(0.3f, 0.35f, 0.4f, 0.7f);
+            outline.effectDistance = new(2, -2);
+
+            var title = new GameObject("Title", typeof(Text));
+            title.transform.SetParent(_qrCodePanel.transform, false);
+            var titleText = title.GetComponent<Text>();
+            titleText.text = "连接二维码";
+            titleText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            titleText.fontSize = 20;
+            titleText.fontStyle = FontStyle.Bold;
+            titleText.color = Color.white;
+            titleText.alignment = TextAnchor.MiddleCenter;
+            var titleRect = title.GetComponent<RectTransform>();
+            titleRect.anchorMin = new(0, 1);
+            titleRect.anchorMax = new(1, 1);
+            titleRect.pivot = new(0.5f, 1);
+            titleRect.anchoredPosition = new(0, -20);
+            titleRect.sizeDelta = new(0, 40);
+
+            var qrCodeImageObj = new GameObject("QRCodeImage", typeof(RectTransform), typeof(RawImage));
+            qrCodeImageObj.transform.SetParent(_qrCodePanel.transform, false);
+            _qrCodeImage = qrCodeImageObj.GetComponent<RawImage>();
+            var qrCodeImageRect = qrCodeImageObj.GetComponent<RectTransform>();
+            qrCodeImageRect.anchorMin = new(0.5f, 0.5f);
+            qrCodeImageRect.anchorMax = new(0.5f, 0.5f);
+            qrCodeImageRect.pivot = new(0.5f, 0.5f);
+            qrCodeImageRect.sizeDelta = new(300, 300);
+            qrCodeImageRect.anchoredPosition = new(0, -20);
+
+            var closeQRButton = new GameObject("CloseQRButton", typeof(Image), typeof(Button));
+            closeQRButton.transform.SetParent(_qrCodePanel.transform, false);
+            var closeQRImage = closeQRButton.GetComponent<Image>();
+            closeQRImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            var closeQRRect = closeQRButton.GetComponent<RectTransform>();
+            closeQRRect.anchorMin = new(1, 1);
+            closeQRRect.anchorMax = new(1, 1);
+            closeQRRect.pivot = new(1, 1);
+            closeQRRect.anchoredPosition = new(-10, -10);
+            closeQRRect.sizeDelta = new(30, 30);
+
+            var closeQRText = new GameObject("Text", typeof(Text));
+            closeQRText.transform.SetParent(closeQRButton.transform, false);
+            var closeQRTextComponent = closeQRText.GetComponent<Text>();
+            closeQRTextComponent.text = "×";
+            closeQRTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            closeQRTextComponent.fontSize = 20;
+            closeQRTextComponent.color = Color.white;
+            closeQRTextComponent.alignment = TextAnchor.MiddleCenter;
+            var closeQRTextRect = closeQRText.GetComponent<RectTransform>();
+            closeQRTextRect.anchorMin = Vector2.zero;
+            closeQRTextRect.anchorMax = Vector2.one;
+            closeQRTextRect.sizeDelta = Vector2.zero;
+
+            var closeQRButtonComponent = closeQRButton.GetComponent<Button>();
+            closeQRButtonComponent.onClick.AddListener(() => _qrCodePanel.SetActive(false));
+
+            _qrCodePanel.SetActive(false);
+        }
+
+        private void SwitchPage(int pageIndex)
+        {
+            _currentPage = pageIndex;
+
+            if (_settingsPage != null) _settingsPage.SetActive(pageIndex == 0);
+            if (_statusPage != null) _statusPage.SetActive(pageIndex == 1);
+
+            UpdateTabButtonStyle(_settingsTabButton, pageIndex == 0);
+            UpdateTabButtonStyle(_statusTabButton, pageIndex == 1);
+
+            if (pageIndex == 1) UpdateStatusPage();
+        }
+
+        private void UpdateTabButtonStyle(Button? button, bool isActive)
+        {
+            if (button == null) return;
+            var image = button.GetComponent<Image>();
+            if (image != null) image.color = isActive ? new(0.3f, 0.35f, 0.4f, 1) : new(0.2f, 0.2f, 0.2f, 1);
+        }
+
+        private void UpdateStatusPage()
+        {
+            var controller = ModBehaviour.Instance?.DgLabController;
+            if (controller == null)
+            {
+                if (_connectionStatusText != null) _connectionStatusText.text = "未初始化";
+                if (_connectedAppsText != null) _connectedAppsText.text = "0";
+                if (_currentStrengthText != null) _currentStrengthText.text = "未获取";
+                if (_strengthASlider != null) _strengthASlider.value = 0;
+                if (_strengthAInput != null) _strengthAInput.text = "0";
+                if (_strengthBSlider != null) _strengthBSlider.value = 0;
+                if (_strengthBInput != null) _strengthBInput.text = "0";
+                return;
+            }
+
+            if (_connectionStatusText != null)
+            {
+                _connectionStatusText.text = controller.IsInitialized
+                    ? controller.HasConnectedApps ? "已连接" : "已初始化，等待连接"
+                    : "未初始化";
+                _connectionStatusText.color = controller.IsInitialized && controller.HasConnectedApps
+                    ? new(0.2f, 0.9f, 0.2f, 1)
+                    : Color.white;
+            }
+
+            if (_connectedAppsText != null && controller.IsInitialized)
+                try
+                {
+                    _connectedAppsText.text = controller.ConnectedAppsCount.ToString();
+                }
+                catch
+                {
+                    _connectedAppsText.text = "未知";
+                }
+
+            if (_currentStrengthText != null)
+                _currentStrengthText.text = $"通道A: {controller.StrengthA} / 通道B: {controller.StrengthB}";
+
+            if (_strengthASlider != null && _strengthAInput != null)
+            {
+                _strengthASlider.value = controller.StrengthA;
+                _strengthAInput.text = controller.StrengthA.ToString();
+            }
+
+            if (_strengthBSlider != null && _strengthBInput != null)
+            {
+                _strengthBSlider.value = controller.StrengthB;
+                _strengthBInput.text = controller.StrengthB.ToString();
+            }
+        }
+
+        private void OnQRCodeButtonClicked()
+        {
+            var controller = ModBehaviour.Instance?.DgLabController;
+            if (controller == null || string.IsNullOrEmpty(controller.QRCodePath))
+            {
+                ModLogger.LogWarning("QR code path is not available.");
+                return;
+            }
+
+            if (!File.Exists(controller.QRCodePath))
+            {
+                ModLogger.LogWarning($"QR code file not found: {controller.QRCodePath}");
+                return;
+            }
+
+            try
+            {
+                var fileData = File.ReadAllBytes(controller.QRCodePath);
+                var texture = new Texture2D(2, 2);
+                texture.LoadImage(fileData);
+                if (_qrCodeImage != null) _qrCodeImage.texture = texture;
+
+                if (_qrCodePanel != null) _qrCodePanel.SetActive(true);
+            }
+            catch (Exception ex)
+            {
+                ModLogger.LogError($"Error loading QR code: {ex.Message}");
+            }
         }
 
         private static GameObject CreateSettingRow(GameObject parent, string name)
@@ -364,6 +717,59 @@ namespace Duckov_DGLab.MonoBehaviours
             return inputField;
         }
 
+        private static (Button minusButton, Button plusButton) CreateStepButtons(GameObject parent,
+            UnityAction onMinusClick, UnityAction onPlusClick, float buttonWidth = 30)
+        {
+            var minusButtonObj = new GameObject("MinusButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            minusButtonObj.transform.SetParent(parent.transform, false);
+            var minusButtonImage = minusButtonObj.GetComponent<Image>();
+            minusButtonImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            var minusButtonRect = minusButtonObj.GetComponent<RectTransform>();
+            minusButtonRect.sizeDelta = new(buttonWidth, 25);
+
+            var minusButtonText = new GameObject("Text", typeof(Text));
+            minusButtonText.transform.SetParent(minusButtonObj.transform, false);
+            var minusTextComponent = minusButtonText.GetComponent<Text>();
+            minusTextComponent.text = "-";
+            minusTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            minusTextComponent.fontSize = 16;
+            minusTextComponent.fontStyle = FontStyle.Bold;
+            minusTextComponent.color = Color.white;
+            minusTextComponent.alignment = TextAnchor.MiddleCenter;
+            var minusTextRect = minusButtonText.GetComponent<RectTransform>();
+            minusTextRect.anchorMin = Vector2.zero;
+            minusTextRect.anchorMax = Vector2.one;
+            minusTextRect.sizeDelta = Vector2.zero;
+
+            var minusButton = minusButtonObj.GetComponent<Button>();
+            minusButton.onClick.AddListener(onMinusClick);
+
+            var plusButtonObj = new GameObject("PlusButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            plusButtonObj.transform.SetParent(parent.transform, false);
+            var plusButtonImage = plusButtonObj.GetComponent<Image>();
+            plusButtonImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            var plusButtonRect = plusButtonObj.GetComponent<RectTransform>();
+            plusButtonRect.sizeDelta = new(buttonWidth, 25);
+
+            var plusButtonText = new GameObject("Text", typeof(Text));
+            plusButtonText.transform.SetParent(plusButtonObj.transform, false);
+            var plusTextComponent = plusButtonText.GetComponent<Text>();
+            plusTextComponent.text = "+";
+            plusTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            plusTextComponent.fontSize = 16;
+            plusTextComponent.fontStyle = FontStyle.Bold;
+            plusTextComponent.color = Color.white;
+            plusTextComponent.alignment = TextAnchor.MiddleCenter;
+            var plusTextRect = plusButtonText.GetComponent<RectTransform>();
+            plusTextRect.anchorMin = Vector2.zero;
+            plusTextRect.anchorMax = Vector2.one;
+            plusTextRect.sizeDelta = Vector2.zero;
+
+            var plusButton = plusButtonObj.GetComponent<Button>();
+            plusButton.onClick.AddListener(onPlusClick);
+
+            return (minusButton, plusButton);
+        }
 
         private static Dropdown CreateDropdown(GameObject parent, List<string> options, int currentIndex,
             UnityAction<int> onValueChanged, float width = 350)
@@ -492,6 +898,7 @@ namespace Duckov_DGLab.MonoBehaviours
             CreateLabel(row, "受伤波持续时间 (秒):");
             _hurtDurationSlider = CreateSlider(row, 1, 5, _config.HurtDuration, OnHurtDurationChanged);
             _hurtDurationInput = CreateInputField(row, _config.HurtDuration.ToString(), OnHurtDurationInputChanged);
+            CreateStepButtons(row, OnHurtDurationDecrease, OnHurtDurationIncrease);
         }
 
         private void BuildHurtWaveTypeSetting(GameObject parent)
@@ -518,6 +925,7 @@ namespace Duckov_DGLab.MonoBehaviours
             _deathDurationSlider = CreateSlider(row, 1, 5, _config.DeathDuration, OnDeathDurationChanged);
             _deathDurationInput =
                 CreateInputField(row, _config.DeathDuration.ToString(), OnDeathDurationInputChanged);
+            CreateStepButtons(row, OnDeathDurationDecrease, OnDeathDurationIncrease);
         }
 
         private void BuildDeathWaveTypeSetting(GameObject parent)
@@ -567,18 +975,6 @@ namespace Duckov_DGLab.MonoBehaviours
             _toggleKeyButton = button;
             _toggleKeyDisplayText = textComponent;
         }
-
-        private void BuildDefaultStrengthSetting(GameObject parent)
-        {
-            if (_config == null) return;
-
-            var row = CreateSettingRow(parent, "DefaultStrengthSetting");
-            CreateLabel(row, "默认电流强度:");
-            _defaultStrengthSlider = CreateSlider(row, 0, 100, _config.DefaultStrength, OnDefaultStrengthChanged);
-            _defaultStrengthInput =
-                CreateInputField(row, _config.DefaultStrength.ToString(), OnDefaultStrengthInputChanged);
-        }
-
 
         private void BuildCloseButton()
         {
@@ -636,6 +1032,20 @@ namespace Duckov_DGLab.MonoBehaviours
             }
         }
 
+        private void OnHurtDurationDecrease()
+        {
+            if (_config == null) return;
+            var newValue = Mathf.Clamp(_config.HurtDuration - 1, 1, 5);
+            if (_hurtDurationSlider != null) _hurtDurationSlider.value = newValue;
+        }
+
+        private void OnHurtDurationIncrease()
+        {
+            if (_config == null) return;
+            var newValue = Mathf.Clamp(_config.HurtDuration + 1, 1, 5);
+            if (_hurtDurationSlider != null) _hurtDurationSlider.value = newValue;
+        }
+
         private void OnHurtWaveTypeChanged(int index)
         {
             if (_config == null || _hurtWaveTypeDropdown == null) return;
@@ -668,6 +1078,20 @@ namespace Duckov_DGLab.MonoBehaviours
             }
         }
 
+        private void OnDeathDurationDecrease()
+        {
+            if (_config == null) return;
+            var newValue = Mathf.Clamp(_config.DeathDuration - 1, 1, 5);
+            if (_deathDurationSlider != null) _deathDurationSlider.value = newValue;
+        }
+
+        private void OnDeathDurationIncrease()
+        {
+            if (_config == null) return;
+            var newValue = Mathf.Clamp(_config.DeathDuration + 1, 1, 5);
+            if (_deathDurationSlider != null) _deathDurationSlider.value = newValue;
+        }
+
         private void OnDeathWaveTypeChanged(int index)
         {
             if (_config == null || _deathWaveTypeDropdown == null) return;
@@ -678,32 +1102,87 @@ namespace Duckov_DGLab.MonoBehaviours
             SaveConfig();
         }
 
-        private void OnDefaultStrengthChanged(float value)
-        {
-            if (_config == null) return;
-            var intValue = (int)value;
-            _config.DefaultStrength = intValue;
-            if (_defaultStrengthInput != null) _defaultStrengthInput.text = intValue.ToString();
-            SaveConfig();
-        }
-
-        private void OnDefaultStrengthInputChanged(string value)
-        {
-            if (_config == null || string.IsNullOrEmpty(value)) return;
-            if (int.TryParse(value, out var intValue))
-            {
-                intValue = Mathf.Clamp(intValue, 0, 100);
-                _config.DefaultStrength = intValue;
-                if (_defaultStrengthSlider != null) _defaultStrengthSlider.value = intValue;
-                if (_defaultStrengthInput != null) _defaultStrengthInput.text = intValue.ToString();
-                SaveConfig();
-            }
-        }
-
         private void SaveConfig()
         {
             if (_config == null) return;
             ConfigManager.SaveConfigToFile(_config, "DGLabConfig.json");
+        }
+
+        private void OnStrengthAChanged(float value)
+        {
+            var intValue = (int)value;
+            if (_strengthAInput != null) _strengthAInput.text = intValue.ToString();
+            SetStrengthAsync(Channel.A, intValue);
+        }
+
+        private void OnStrengthAInputChanged(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return;
+            if (int.TryParse(value, out var intValue))
+            {
+                intValue = Mathf.Clamp(intValue, 0, 100);
+                if (_strengthASlider != null) _strengthASlider.value = intValue;
+                if (_strengthAInput != null) _strengthAInput.text = intValue.ToString();
+                SetStrengthAsync(Channel.A, intValue);
+            }
+        }
+
+        private void OnStrengthBChanged(float value)
+        {
+            var intValue = (int)value;
+            if (_strengthBInput != null) _strengthBInput.text = intValue.ToString();
+            SetStrengthAsync(Channel.B, intValue);
+        }
+
+        private void OnStrengthBInputChanged(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return;
+            if (int.TryParse(value, out var intValue))
+            {
+                intValue = Mathf.Clamp(intValue, 0, 100);
+                if (_strengthBSlider != null) _strengthBSlider.value = intValue;
+                if (_strengthBInput != null) _strengthBInput.text = intValue.ToString();
+                SetStrengthAsync(Channel.B, intValue);
+            }
+        }
+
+        private void OnStrengthADecrease()
+        {
+            if (_strengthASlider == null) return;
+            var currentValue = (int)_strengthASlider.value;
+            var newValue = Mathf.Clamp(currentValue - 1, 0, 100);
+            _strengthASlider.value = newValue;
+        }
+
+        private void OnStrengthAIncrease()
+        {
+            if (_strengthASlider == null) return;
+            var currentValue = (int)_strengthASlider.value;
+            var newValue = Mathf.Clamp(currentValue + 1, 0, 100);
+            _strengthASlider.value = newValue;
+        }
+
+        private void OnStrengthBDecrease()
+        {
+            if (_strengthBSlider == null) return;
+            var currentValue = (int)_strengthBSlider.value;
+            var newValue = Mathf.Clamp(currentValue - 1, 0, 100);
+            _strengthBSlider.value = newValue;
+        }
+
+        private void OnStrengthBIncrease()
+        {
+            if (_strengthBSlider == null) return;
+            var currentValue = (int)_strengthBSlider.value;
+            var newValue = Mathf.Clamp(currentValue + 1, 0, 100);
+            _strengthBSlider.value = newValue;
+        }
+
+        private void SetStrengthAsync(Channel channel, int strength)
+        {
+            var controller = ModBehaviour.Instance?.DgLabController;
+            if (controller == null) return;
+            _ = controller.SetStrengthAsync(channel, strength);
         }
 
         private void OnToggleKeyButtonClicked()
@@ -816,6 +1295,8 @@ namespace Duckov_DGLab.MonoBehaviours
             }
 
             StartCoroutine(ForceCursorFree());
+            StartCoroutine(UpdateStatusPagePeriodically());
+            if (_currentPage == 1) UpdateStatusPage();
             ModLogger.Log("DGLab config panel opened.");
         }
 
@@ -862,6 +1343,15 @@ namespace Duckov_DGLab.MonoBehaviours
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
                 yield return null;
+            }
+        }
+
+        private IEnumerator UpdateStatusPagePeriodically()
+        {
+            while (_uiActive)
+            {
+                if (_currentPage == 1) UpdateStatusPage();
+                yield return new WaitForSeconds(1f);
             }
         }
     }

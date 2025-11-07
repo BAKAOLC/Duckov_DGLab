@@ -20,9 +20,15 @@ namespace Duckov_DGLab
         private bool _disposed;
         private DGLabWebSocketServer? _server;
 
+        public int StrengthA { get; private set; }
+
+        public int StrengthB { get; private set; }
+
         public bool IsInitialized { get; private set; }
 
         public bool HasConnectedApps => _controller?.GetConnectedApps().Count > 0;
+
+        public int ConnectedAppsCount => _controller?.GetConnectedApps().Count ?? 0;
 
         // ReSharper disable once InconsistentNaming
         public string QRCodePath { get; private set; } = "";
@@ -150,10 +156,11 @@ namespace Duckov_DGLab
                 ModLogger.LogError($"Error with client {clientId[..8]}... : {ex.Message}");
             };
 
-            _server.MessageHandler.BindingSucceeded += (_, args) =>
+            _server.MessageHandler.BindingSucceeded += (o, args) =>
             {
                 var (clientId, message) = args;
                 ModLogger.Log($"Binding succeeded for client {clientId[..8]}... : {message}");
+                _ = ApplyCurrentStrengthToAppAsync(clientId);
             };
 
             _server.MessageHandler.BindingFailed += (_, args) =>
@@ -161,6 +168,72 @@ namespace Duckov_DGLab
                 var (clientId, message) = args;
                 ModLogger.LogError($"Binding failed for client {clientId[..8]}... : {message}");
             };
+        }
+
+        private async Task ApplyCurrentStrengthToAppAsync(string appId)
+        {
+            if (!IsInitialized || _server is null || _controller is null) return;
+
+            try
+            {
+                var apps = _controller.GetConnectedApps();
+                var app = apps.FirstOrDefault(a => a.Id == appId);
+                if (app == null) return;
+
+                var boundApps = _server.ClientManager.GetControllerBoundApps(_server.ControllerClientId);
+                if (!boundApps.Any(boundApp => boundApp.Contains(appId))) return;
+
+                await Task.Delay(500).ConfigureAwait(false);
+
+                var taskA = _controller.SetStrengthAsync(appId, Channel.A, StrengthA);
+                var taskB = _controller.SetStrengthAsync(appId, Channel.B, StrengthB);
+                await Task.WhenAll(taskA, taskB).ConfigureAwait(false);
+
+                ModLogger.Log(
+                    $"Applied current strength (A: {StrengthA}, B: {StrengthB}) to newly connected app {appId[..8]}...");
+            }
+            catch (Exception ex)
+            {
+                ModLogger.LogError($"Error applying current strength to app {appId[..8]}...: {ex.Message}");
+            }
+        }
+
+        public async Task SetStrengthAsync(Channel channel, int strength)
+        {
+            strength = Math.Clamp(strength, 0, 100);
+            switch (channel)
+            {
+                case Channel.A:
+                    StrengthA = strength;
+                    break;
+                case Channel.B:
+                    StrengthB = strength;
+                    break;
+            }
+
+            if (!IsInitialized || _server is null || _controller is null) return;
+
+            var apps = _controller.GetConnectedApps();
+            if (apps.Count == 0) return;
+
+            try
+            {
+                var targetApps = apps.Where(app =>
+                    _server.ClientManager.GetControllerBoundApps(_server.ControllerClientId)
+                        .Any(boundApp => boundApp.Contains(app.Id))).ToArray();
+                if (targetApps.Length == 0) return;
+
+                var tasks = targetApps.Select(app => _controller.SetStrengthAsync(app.Id, channel, strength))
+                    .ToArray();
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+
+                ModLogger.Log(
+                    $"Set strength to {strength} for channel {channel} on {targetApps.Length} connected apps.");
+            }
+            catch (Exception ex)
+            {
+                ModLogger.LogError($"Error setting strength for channel {channel}: {ex.Message}");
+            }
         }
 
         public async Task<bool> SendCustomWaveAsync(string waveDataJson, Channel channel,
