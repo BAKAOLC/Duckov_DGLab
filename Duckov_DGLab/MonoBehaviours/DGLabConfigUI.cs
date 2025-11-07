@@ -32,12 +32,15 @@ namespace Duckov_DGLab.MonoBehaviours
         private GameObject? _panelRoot;
         private PlayerInput? _playerInput;
         private KeyCode _toggleKey = KeyCode.N;
+        private Button? _toggleKeyButton;
+        private Text? _toggleKeyDisplayText;
         private bool _uiActive;
         private GameObject? _uiRoot;
 
         private void Start()
         {
             _config = ModBehaviour.Instance?.Config;
+            if (_config != null) _toggleKey = _config.ToggleKey;
         }
 
         private void Update()
@@ -91,6 +94,8 @@ namespace Duckov_DGLab.MonoBehaviours
         private void InitializeUI()
         {
             if (_isInitialized) return;
+
+            if (_config != null) _toggleKey = _config.ToggleKey;
 
             CreateOrFindUiRoot();
             BuildPanel();
@@ -200,6 +205,7 @@ namespace Duckov_DGLab.MonoBehaviours
             layoutGroup.childForceExpandWidth = true;
             layoutGroup.childForceExpandHeight = false;
 
+            BuildToggleKeySetting(contentArea);
             BuildHurtDurationSetting(contentArea);
             BuildHurtWaveTypeSetting(contentArea);
             BuildDeathDurationSetting(contentArea);
@@ -529,6 +535,39 @@ namespace Duckov_DGLab.MonoBehaviours
             _deathWaveTypeDropdown = CreateDropdown(row, options, currentIndex, OnDeathWaveTypeChanged);
         }
 
+        private void BuildToggleKeySetting(GameObject parent)
+        {
+            if (_config == null) return;
+
+            var row = CreateSettingRow(parent, "ToggleKeySetting");
+            CreateLabel(row, "打开/关闭界面按键:");
+
+            var buttonObj = new GameObject("ToggleKeyButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            buttonObj.transform.SetParent(row.transform, false);
+            var buttonImage = buttonObj.GetComponent<Image>();
+            buttonImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            var buttonRect = buttonObj.GetComponent<RectTransform>();
+            buttonRect.sizeDelta = new(200, 30);
+
+            var buttonText = new GameObject("Text", typeof(Text));
+            buttonText.transform.SetParent(buttonObj.transform, false);
+            var textComponent = buttonText.GetComponent<Text>();
+            textComponent.text = _config.ToggleKey.ToString();
+            textComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            textComponent.fontSize = 14;
+            textComponent.color = Color.white;
+            textComponent.alignment = TextAnchor.MiddleCenter;
+            var textRect = buttonText.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+
+            var button = buttonObj.GetComponent<Button>();
+            button.onClick.AddListener(OnToggleKeyButtonClicked);
+            _toggleKeyButton = button;
+            _toggleKeyDisplayText = textComponent;
+        }
+
         private void BuildDefaultStrengthSetting(GameObject parent)
         {
             if (_config == null) return;
@@ -667,6 +706,17 @@ namespace Duckov_DGLab.MonoBehaviours
             ConfigManager.SaveConfigToFile(_config, "DGLabConfig.json");
         }
 
+        private void OnToggleKeyButtonClicked()
+        {
+            if (_isWaitingForKeyInput) return;
+            _isWaitingForKeyInput = true;
+            if (_toggleKeyDisplayText != null)
+            {
+                _toggleKeyDisplayText.text = "按任意键...";
+                _toggleKeyDisplayText.color = new(1f, 0.8f, 0f, 1f);
+            }
+        }
+
         private void HandleKeyInputCapture()
         {
             if (!_isWaitingForKeyInput) return;
@@ -674,6 +724,7 @@ namespace Duckov_DGLab.MonoBehaviours
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 _isWaitingForKeyInput = false;
+                UpdateToggleKeyDisplay();
                 return;
             }
 
@@ -685,10 +736,24 @@ namespace Duckov_DGLab.MonoBehaviours
                         continue;
 
                     _toggleKey = keyCode;
+                    if (_config != null)
+                    {
+                        _config.ToggleKey = keyCode;
+                        SaveConfig();
+                    }
+
                     _isWaitingForKeyInput = false;
+                    UpdateToggleKeyDisplay();
                     ModLogger.Log($"Toggle key set to: {keyCode}");
                     return;
                 }
+        }
+
+        private void UpdateToggleKeyDisplay()
+        {
+            if (_toggleKeyDisplayText == null) return;
+            _toggleKeyDisplayText.text = _toggleKey.ToString();
+            _toggleKeyDisplayText.color = Color.white;
         }
 
         private static bool IsTypingInInputField()

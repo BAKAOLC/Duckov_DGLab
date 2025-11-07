@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace Duckov_DGLab.Configs
 {
     public class DGLabConfig : ConfigBase
@@ -7,6 +9,7 @@ namespace Duckov_DGLab.Configs
         public int DeathDuration { get; set; } = 3;
         public string? DeathWaveType { get; set; }
         public int DefaultStrength { get; set; }
+        public KeyCode ToggleKey { get; set; } = KeyCode.N;
 
         public override void LoadDefault()
         {
@@ -15,6 +18,7 @@ namespace Duckov_DGLab.Configs
             DeathDuration = 3;
             DeathWaveType = null;
             DefaultStrength = 0;
+            ToggleKey = KeyCode.N;
         }
 
         // ReSharper disable InvertIf
@@ -54,6 +58,7 @@ namespace Duckov_DGLab.Configs
             DeathDuration = otherConfig.DeathDuration;
             DeathWaveType = otherConfig.DeathWaveType;
             DefaultStrength = otherConfig.DefaultStrength;
+            ToggleKey = otherConfig.ToggleKey;
         }
     }
 }
