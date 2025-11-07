@@ -7,7 +7,6 @@ namespace Duckov_DGLab.Configs
         public int DeathDuration { get; set; } = 3;
         public string? DeathWaveType { get; set; }
         public int DefaultStrength { get; set; }
-        public int MaxStrength { get; set; } = 100;
 
         public override void LoadDefault()
         {
@@ -16,37 +15,36 @@ namespace Duckov_DGLab.Configs
             DeathDuration = 3;
             DeathWaveType = null;
             DefaultStrength = 0;
-            MaxStrength = 100;
         }
 
+        // ReSharper disable InvertIf
         public override bool Validate()
         {
-            if (HurtDuration < 1 || HurtDuration > 5)
+            var changed = false;
+            if (HurtDuration is < 1 or > 5)
             {
                 ModLogger.LogWarning($"Invalid HurtDuration: {HurtDuration}, resetting to default (1)");
                 HurtDuration = 1;
+                changed = true;
             }
 
-            if (DeathDuration < 1 || DeathDuration > 5)
+            if (DeathDuration is < 1 or > 5)
             {
                 ModLogger.LogWarning($"Invalid DeathDuration: {DeathDuration}, resetting to default (3)");
                 DeathDuration = 3;
+                changed = true;
             }
 
-            if (DefaultStrength < 0 || DefaultStrength > 100)
+            if (DefaultStrength is < 0 or > 100)
             {
                 ModLogger.LogWarning($"Invalid DefaultStrength: {DefaultStrength}, resetting to default (0)");
                 DefaultStrength = 0;
+                changed = true;
             }
 
-            if (MaxStrength < 0 || MaxStrength > 100)
-            {
-                ModLogger.LogWarning($"Invalid MaxStrength: {MaxStrength}, resetting to default (100)");
-                MaxStrength = 100;
-            }
-
-            return true;
+            return changed;
         }
+        // ReSharper restore InvertIf
 
         public override void CopyFrom(IConfigBase other)
         {
@@ -56,7 +54,6 @@ namespace Duckov_DGLab.Configs
             DeathDuration = otherConfig.DeathDuration;
             DeathWaveType = otherConfig.DeathWaveType;
             DefaultStrength = otherConfig.DefaultStrength;
-            MaxStrength = otherConfig.MaxStrength;
         }
     }
 }

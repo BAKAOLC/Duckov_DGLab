@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Duckov_DGLab.Configs;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -17,23 +18,20 @@ namespace Duckov_DGLab.MonoBehaviours
         private CharacterInputControl? _charInput;
         private Button? _closeButton;
         private DGLabConfig? _config;
+        private InputField? _deathDurationInput;
         private Slider? _deathDurationSlider;
-        private Text? _deathDurationText;
         private Dropdown? _deathWaveTypeDropdown;
+        private InputField? _defaultStrengthInput;
         private Slider? _defaultStrengthSlider;
-        private Text? _defaultStrengthText;
-
+        private InputField? _hurtDurationInput;
         private Slider? _hurtDurationSlider;
-        private Text? _hurtDurationText;
         private Dropdown? _hurtWaveTypeDropdown;
         private bool _isInitialized;
         private bool _isWaitingForKeyInput;
-        private Slider? _maxStrengthSlider;
-        private Text? _maxStrengthText;
         private GameObject? _overlay;
         private GameObject? _panelRoot;
         private PlayerInput? _playerInput;
-        private KeyCode _toggleKey = KeyCode.F10;
+        private KeyCode _toggleKey = KeyCode.N;
         private bool _uiActive;
         private GameObject? _uiRoot;
 
@@ -194,8 +192,8 @@ namespace Duckov_DGLab.MonoBehaviours
             contentRect.offsetMax = new(-20, -60);
 
             var layoutGroup = contentArea.GetComponent<VerticalLayoutGroup>();
-            layoutGroup.padding = new(10, 10, 10, 10);
-            layoutGroup.spacing = 15;
+            layoutGroup.padding = new(20, 20, 20, 20);
+            layoutGroup.spacing = 20;
             layoutGroup.childAlignment = TextAnchor.UpperLeft;
             layoutGroup.childControlWidth = true;
             layoutGroup.childControlHeight = false;
@@ -207,336 +205,341 @@ namespace Duckov_DGLab.MonoBehaviours
             BuildDeathDurationSetting(contentArea);
             BuildDeathWaveTypeSetting(contentArea);
             BuildDefaultStrengthSetting(contentArea);
-            BuildMaxStrengthSetting(contentArea);
+        }
+
+        private static GameObject CreateSettingRow(GameObject parent, string name)
+        {
+            var row = new GameObject(name, typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            row.transform.SetParent(parent.transform, false);
+            var rowRect = row.GetComponent<RectTransform>();
+            rowRect.sizeDelta = new(0, 40);
+
+            var layout = row.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing = 15;
+            layout.childControlWidth = false;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = true;
+            layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.padding = new(0, 0, 0, 0);
+
+            return row;
+        }
+
+        private static Text CreateLabel(GameObject parent, string text, float width = 180)
+        {
+            var label = new GameObject("Label", typeof(Text));
+            label.transform.SetParent(parent.transform, false);
+            var labelText = label.GetComponent<Text>();
+            labelText.text = text;
+            labelText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            labelText.fontSize = 14;
+            labelText.color = Color.white;
+            labelText.alignment = TextAnchor.MiddleLeft;
+            var labelRect = label.GetComponent<RectTransform>();
+            labelRect.sizeDelta = new(width, 0);
+            return labelText;
+        }
+
+        private static Slider CreateSlider(GameObject parent, float minValue, float maxValue, float currentValue,
+            UnityAction<float> onValueChanged, float width = 250)
+        {
+            var sliderObj = new GameObject("Slider", typeof(RectTransform), typeof(Slider));
+            sliderObj.transform.SetParent(parent.transform, false);
+            var slider = sliderObj.GetComponent<Slider>();
+            slider.minValue = minValue;
+            slider.maxValue = maxValue;
+            slider.wholeNumbers = true;
+            slider.value = currentValue;
+            slider.onValueChanged.AddListener(onValueChanged);
+
+            var sliderRect = sliderObj.GetComponent<RectTransform>();
+            sliderRect.sizeDelta = new(width, 20);
+
+            var background = new GameObject("Background", typeof(Image));
+            background.transform.SetParent(sliderObj.transform, false);
+            var bgImage = background.GetComponent<Image>();
+            bgImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            var bgRect = background.GetComponent<RectTransform>();
+            bgRect.anchorMin = Vector2.zero;
+            bgRect.anchorMax = Vector2.one;
+            bgRect.sizeDelta = Vector2.zero;
+            slider.targetGraphic = bgImage;
+
+            var fillArea = new GameObject("Fill Area", typeof(RectTransform));
+            fillArea.transform.SetParent(sliderObj.transform, false);
+            var fillAreaRect = fillArea.GetComponent<RectTransform>();
+            fillAreaRect.anchorMin = Vector2.zero;
+            fillAreaRect.anchorMax = Vector2.one;
+            fillAreaRect.anchoredPosition = Vector2.zero;
+            fillAreaRect.sizeDelta = Vector2.zero;
+
+            var fill = new GameObject("Fill", typeof(Image));
+            fill.transform.SetParent(fillArea.transform, false);
+            var fillImage = fill.GetComponent<Image>();
+            fillImage.color = new(0.2f, 0.6f, 0.9f, 1);
+            var fillRect = fill.GetComponent<RectTransform>();
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = new(1, 1);
+            fillRect.sizeDelta = Vector2.zero;
+            slider.fillRect = fillRect;
+
+            var handleSlideArea = new GameObject("Handle Slide Area", typeof(RectTransform));
+            handleSlideArea.transform.SetParent(sliderObj.transform, false);
+            var handleAreaRect = handleSlideArea.GetComponent<RectTransform>();
+            handleAreaRect.anchorMin = Vector2.zero;
+            handleAreaRect.anchorMax = Vector2.one;
+            handleAreaRect.sizeDelta = Vector2.zero;
+            handleAreaRect.anchoredPosition = Vector2.zero;
+
+            var handle = new GameObject("Handle", typeof(Image));
+            handle.transform.SetParent(handleSlideArea.transform, false);
+            var handleImage = handle.GetComponent<Image>();
+            handleImage.color = Color.white;
+            var handleRect = handle.GetComponent<RectTransform>();
+            handleRect.sizeDelta = new(16, 16);
+            slider.handleRect = handleRect;
+
+            return slider;
+        }
+
+        private static InputField CreateInputField(GameObject parent, string text,
+            UnityAction<string> onValueChanged, float width = 80)
+        {
+            var inputObj = new GameObject("InputField", typeof(RectTransform), typeof(Image), typeof(InputField));
+            inputObj.transform.SetParent(parent.transform, false);
+            var inputField = inputObj.GetComponent<InputField>();
+            var inputImage = inputObj.GetComponent<Image>();
+            inputImage.color = new(0.15f, 0.15f, 0.15f, 1);
+
+            var inputRect = inputObj.GetComponent<RectTransform>();
+            inputRect.sizeDelta = new(width, 25);
+
+            var textArea = new GameObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
+            textArea.transform.SetParent(inputObj.transform, false);
+            var textAreaRect = textArea.GetComponent<RectTransform>();
+            textAreaRect.anchorMin = Vector2.zero;
+            textAreaRect.anchorMax = Vector2.one;
+            textAreaRect.offsetMin = new(5, 0);
+            textAreaRect.offsetMax = new(-5, 0);
+
+            var placeholder = new GameObject("Placeholder", typeof(Text));
+            placeholder.transform.SetParent(textArea.transform, false);
+            var placeholderText = placeholder.GetComponent<Text>();
+            placeholderText.text = "";
+            placeholderText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            placeholderText.fontSize = 14;
+            placeholderText.color = new(0.5f, 0.5f, 0.5f, 1);
+            placeholderText.alignment = TextAnchor.MiddleCenter;
+            var placeholderRect = placeholder.GetComponent<RectTransform>();
+            placeholderRect.anchorMin = Vector2.zero;
+            placeholderRect.anchorMax = Vector2.one;
+            placeholderRect.sizeDelta = Vector2.zero;
+            inputField.placeholder = placeholderText;
+
+            var textObj = new GameObject("Text", typeof(Text));
+            textObj.transform.SetParent(textArea.transform, false);
+            var textComponent = textObj.GetComponent<Text>();
+            textComponent.text = text;
+            textComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            textComponent.fontSize = 14;
+            textComponent.color = Color.white;
+            textComponent.alignment = TextAnchor.MiddleCenter;
+            var textRect = textObj.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            inputField.textComponent = textComponent;
+
+            inputField.contentType = InputField.ContentType.IntegerNumber;
+            inputField.text = text;
+            inputField.onValueChanged.AddListener(onValueChanged);
+
+            return inputField;
+        }
+
+
+        private static Dropdown CreateDropdown(GameObject parent, List<string> options, int currentIndex,
+            UnityAction<int> onValueChanged, float width = 350)
+        {
+            var dropdownObj = new GameObject("Dropdown", typeof(RectTransform), typeof(Dropdown));
+            dropdownObj.transform.SetParent(parent.transform, false);
+            var dropdown = dropdownObj.GetComponent<Dropdown>();
+            dropdown.options = options.Select(o => new Dropdown.OptionData(o)).ToList();
+            dropdown.value = currentIndex;
+            dropdown.onValueChanged.AddListener(onValueChanged);
+
+            var dropdownRect = dropdownObj.GetComponent<RectTransform>();
+            dropdownRect.sizeDelta = new(width, 30);
+
+            var dropdownImage = dropdownObj.AddComponent<Image>();
+            dropdownImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            dropdown.targetGraphic = dropdownImage;
+
+            var dropdownLabel = new GameObject("Label", typeof(Text));
+            dropdownLabel.transform.SetParent(dropdownObj.transform, false);
+            var labelTextComponent = dropdownLabel.GetComponent<Text>();
+            labelTextComponent.text = options[currentIndex];
+            labelTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            labelTextComponent.fontSize = 14;
+            labelTextComponent.color = Color.white;
+            labelTextComponent.alignment = TextAnchor.MiddleLeft;
+            var labelRectTransform = dropdownLabel.GetComponent<RectTransform>();
+            labelRectTransform.anchorMin = Vector2.zero;
+            labelRectTransform.anchorMax = Vector2.one;
+            labelRectTransform.offsetMin = new(10, 0);
+            labelRectTransform.offsetMax = new(-25, 0);
+            dropdown.captionText = labelTextComponent;
+
+            var template = new GameObject("Template", typeof(RectTransform), typeof(Image), typeof(ScrollRect));
+            template.transform.SetParent(dropdownObj.transform, false);
+            template.SetActive(false);
+            var templateImage = template.GetComponent<Image>();
+            templateImage.color = new(0.15f, 0.15f, 0.15f, 1);
+            var templateRect = template.GetComponent<RectTransform>();
+            templateRect.anchorMin = new(0, 0);
+            templateRect.anchorMax = new(1, 0);
+            templateRect.pivot = new(0.5f, 1);
+            templateRect.anchoredPosition = new(0, 2);
+            templateRect.sizeDelta = new(0, 150);
+            dropdown.template = templateRect;
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(Mask));
+            viewport.transform.SetParent(template.transform, false);
+            var viewportImage = viewport.GetComponent<Image>();
+            viewportImage.color = new(0.15f, 0.15f, 0.15f, 1);
+            var viewportRect = viewport.GetComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            viewportRect.anchoredPosition = Vector2.zero;
+
+            var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup),
+                typeof(ContentSizeFitter));
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.GetComponent<RectTransform>();
+            contentRect.anchorMin = new(0, 1);
+            contentRect.anchorMax = new(1, 1);
+            contentRect.pivot = new(0.5f, 1);
+            contentRect.anchoredPosition = Vector2.zero;
+            contentRect.sizeDelta = new(0, 0);
+
+            var contentLayout = content.GetComponent<VerticalLayoutGroup>();
+            contentLayout.childControlHeight = false;
+            contentLayout.childControlWidth = true;
+            contentLayout.childForceExpandHeight = false;
+            contentLayout.childForceExpandWidth = true;
+
+            var contentSizeFitter = content.GetComponent<ContentSizeFitter>();
+            contentSizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var item = new GameObject("Item", typeof(RectTransform), typeof(Toggle));
+            item.transform.SetParent(content.transform, false);
+            var itemRect = item.GetComponent<RectTransform>();
+            itemRect.sizeDelta = new(0, 30);
+            var itemToggle = item.GetComponent<Toggle>();
+
+            var itemBackground = new GameObject("Item Background", typeof(Image));
+            itemBackground.transform.SetParent(item.transform, false);
+            var itemBgImage = itemBackground.GetComponent<Image>();
+            itemBgImage.color = new(0.2f, 0.2f, 0.2f, 1);
+            var itemBgRect = itemBackground.GetComponent<RectTransform>();
+            itemBgRect.anchorMin = Vector2.zero;
+            itemBgRect.anchorMax = Vector2.one;
+            itemBgRect.sizeDelta = Vector2.zero;
+            itemToggle.targetGraphic = itemBgImage;
+
+            var itemLabel = new GameObject("Item Label", typeof(Text));
+            itemLabel.transform.SetParent(item.transform, false);
+            var itemLabelText = itemLabel.GetComponent<Text>();
+            itemLabelText.text = "选项";
+            itemLabelText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            itemLabelText.fontSize = 14;
+            itemLabelText.color = Color.white;
+            itemLabelText.alignment = TextAnchor.MiddleLeft;
+            var itemLabelRect = itemLabel.GetComponent<RectTransform>();
+            itemLabelRect.anchorMin = Vector2.zero;
+            itemLabelRect.anchorMax = Vector2.one;
+            itemLabelRect.offsetMin = new(10, 0);
+            itemLabelRect.offsetMax = new(-10, 0);
+            itemToggle.graphic = itemLabelText;
+
+            var scrollRect = template.GetComponent<ScrollRect>();
+            scrollRect.content = contentRect;
+            scrollRect.viewport = viewportRect;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.verticalScrollbar = null;
+            scrollRect.horizontalScrollbar = null;
+
+            dropdown.itemText = itemLabelText;
+
+            return dropdown;
         }
 
         private void BuildHurtDurationSetting(GameObject parent)
         {
             if (_config == null) return;
 
-            var settingObj = new GameObject("HurtDurationSetting", typeof(RectTransform));
-            settingObj.transform.SetParent(parent.transform, false);
-            var settingRect = settingObj.GetComponent<RectTransform>();
-            settingRect.sizeDelta = new(0, 50);
-
-            var label = new GameObject("Label", typeof(Text));
-            label.transform.SetParent(settingObj.transform, false);
-            var labelText = label.GetComponent<Text>();
-            labelText.text = "受伤波持续时间 (秒):";
-            labelText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            labelText.fontSize = 14;
-            labelText.color = Color.white;
-            labelText.alignment = TextAnchor.MiddleLeft;
-            var labelRect = label.GetComponent<RectTransform>();
-            labelRect.anchorMin = new(0, 0.5f);
-            labelRect.anchorMax = new(0.4f, 0.5f);
-            labelRect.pivot = new(0, 0.5f);
-            labelRect.anchoredPosition = Vector2.zero;
-            labelRect.sizeDelta = Vector2.zero;
-
-            var sliderObj = new GameObject("Slider", typeof(Slider));
-            sliderObj.transform.SetParent(settingObj.transform, false);
-            var slider = sliderObj.GetComponent<Slider>();
-            slider.minValue = 1;
-            slider.maxValue = 5;
-            slider.wholeNumbers = true;
-            slider.value = _config.HurtDuration;
-            slider.onValueChanged.AddListener(OnHurtDurationChanged);
-            _hurtDurationSlider = slider;
-
-            var sliderRect = sliderObj.GetComponent<RectTransform>();
-            sliderRect.anchorMin = new(0.4f, 0.5f);
-            sliderRect.anchorMax = new(0.85f, 0.5f);
-            sliderRect.pivot = new(0, 0.5f);
-            sliderRect.anchoredPosition = new(10, 0);
-            sliderRect.sizeDelta = new(0, 20);
-
-            var valueText = new GameObject("ValueText", typeof(Text));
-            valueText.transform.SetParent(settingObj.transform, false);
-            var valueTextComponent = valueText.GetComponent<Text>();
-            valueTextComponent.text = _config.HurtDuration.ToString();
-            valueTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            valueTextComponent.fontSize = 14;
-            valueTextComponent.color = Color.white;
-            valueTextComponent.alignment = TextAnchor.MiddleCenter;
-            _hurtDurationText = valueTextComponent;
-
-            var valueRect = valueText.GetComponent<RectTransform>();
-            valueRect.anchorMin = new(0.85f, 0.5f);
-            valueRect.anchorMax = new(1, 0.5f);
-            valueRect.pivot = new(0, 0.5f);
-            valueRect.anchoredPosition = new(10, 0);
-            valueRect.sizeDelta = new(0, 20);
+            var row = CreateSettingRow(parent, "HurtDurationSetting");
+            CreateLabel(row, "受伤波持续时间 (秒):");
+            _hurtDurationSlider = CreateSlider(row, 1, 5, _config.HurtDuration, OnHurtDurationChanged);
+            _hurtDurationInput = CreateInputField(row, _config.HurtDuration.ToString(), OnHurtDurationInputChanged);
         }
 
         private void BuildHurtWaveTypeSetting(GameObject parent)
         {
             if (_config == null) return;
 
-            var settingObj = new GameObject("HurtWaveTypeSetting", typeof(RectTransform));
-            settingObj.transform.SetParent(parent.transform, false);
-            var settingRect = settingObj.GetComponent<RectTransform>();
-            settingRect.sizeDelta = new(0, 50);
-
-            var label = new GameObject("Label", typeof(Text));
-            label.transform.SetParent(settingObj.transform, false);
-            var labelText = label.GetComponent<Text>();
-            labelText.text = "受伤波类型:";
-            labelText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            labelText.fontSize = 14;
-            labelText.color = Color.white;
-            labelText.alignment = TextAnchor.MiddleLeft;
-            var labelRect = label.GetComponent<RectTransform>();
-            labelRect.anchorMin = new(0, 0.5f);
-            labelRect.anchorMax = new(0.4f, 0.5f);
-            labelRect.pivot = new(0, 0.5f);
-            labelRect.anchoredPosition = Vector2.zero;
-            labelRect.sizeDelta = Vector2.zero;
-
-            var dropdownObj = new GameObject("Dropdown", typeof(Dropdown));
-            dropdownObj.transform.SetParent(settingObj.transform, false);
-            var dropdown = dropdownObj.GetComponent<Dropdown>();
+            var row = CreateSettingRow(parent, "HurtWaveTypeSetting");
+            CreateLabel(row, "受伤波类型:");
             var options = new List<string> { "默认" };
             options.AddRange(CustomWaveManager.GetAllCustomWaveNames());
-            dropdown.options = options.Select(o => new Dropdown.OptionData(o)).ToList();
             var currentIndex = string.IsNullOrEmpty(_config.HurtWaveType)
                 ? 0
                 : options.FindIndex(o => o.Equals(_config.HurtWaveType, StringComparison.OrdinalIgnoreCase));
             if (currentIndex < 0) currentIndex = 0;
-            dropdown.value = currentIndex;
-            dropdown.onValueChanged.AddListener(OnHurtWaveTypeChanged);
-            _hurtWaveTypeDropdown = dropdown;
-
-            var dropdownRect = dropdownObj.GetComponent<RectTransform>();
-            dropdownRect.anchorMin = new(0.4f, 0.5f);
-            dropdownRect.anchorMax = new(1, 0.5f);
-            dropdownRect.pivot = new(0, 0.5f);
-            dropdownRect.anchoredPosition = new(10, 0);
-            dropdownRect.sizeDelta = new(0, 30);
+            _hurtWaveTypeDropdown = CreateDropdown(row, options, currentIndex, OnHurtWaveTypeChanged);
         }
 
         private void BuildDeathDurationSetting(GameObject parent)
         {
             if (_config == null) return;
 
-            var settingObj = new GameObject("DeathDurationSetting", typeof(RectTransform));
-            settingObj.transform.SetParent(parent.transform, false);
-            var settingRect = settingObj.GetComponent<RectTransform>();
-            settingRect.sizeDelta = new(0, 50);
-
-            var label = new GameObject("Label", typeof(Text));
-            label.transform.SetParent(settingObj.transform, false);
-            var labelText = label.GetComponent<Text>();
-            labelText.text = "死亡波持续时间 (秒):";
-            labelText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            labelText.fontSize = 14;
-            labelText.color = Color.white;
-            labelText.alignment = TextAnchor.MiddleLeft;
-            var labelRect = label.GetComponent<RectTransform>();
-            labelRect.anchorMin = new(0, 0.5f);
-            labelRect.anchorMax = new(0.4f, 0.5f);
-            labelRect.pivot = new(0, 0.5f);
-            labelRect.anchoredPosition = Vector2.zero;
-            labelRect.sizeDelta = Vector2.zero;
-
-            var sliderObj = new GameObject("Slider", typeof(Slider));
-            sliderObj.transform.SetParent(settingObj.transform, false);
-            var slider = sliderObj.GetComponent<Slider>();
-            slider.minValue = 1;
-            slider.maxValue = 5;
-            slider.wholeNumbers = true;
-            slider.value = _config.DeathDuration;
-            slider.onValueChanged.AddListener(OnDeathDurationChanged);
-            _deathDurationSlider = slider;
-
-            var sliderRect = sliderObj.GetComponent<RectTransform>();
-            sliderRect.anchorMin = new(0.4f, 0.5f);
-            sliderRect.anchorMax = new(0.85f, 0.5f);
-            sliderRect.pivot = new(0, 0.5f);
-            sliderRect.anchoredPosition = new(10, 0);
-            sliderRect.sizeDelta = new(0, 20);
-
-            var valueText = new GameObject("ValueText", typeof(Text));
-            valueText.transform.SetParent(settingObj.transform, false);
-            var valueTextComponent = valueText.GetComponent<Text>();
-            valueTextComponent.text = _config.DeathDuration.ToString();
-            valueTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            valueTextComponent.fontSize = 14;
-            valueTextComponent.color = Color.white;
-            valueTextComponent.alignment = TextAnchor.MiddleCenter;
-            _deathDurationText = valueTextComponent;
-
-            var valueRect = valueText.GetComponent<RectTransform>();
-            valueRect.anchorMin = new(0.85f, 0.5f);
-            valueRect.anchorMax = new(1, 0.5f);
-            valueRect.pivot = new(0, 0.5f);
-            valueRect.anchoredPosition = new(10, 0);
-            valueRect.sizeDelta = new(0, 20);
+            var row = CreateSettingRow(parent, "DeathDurationSetting");
+            CreateLabel(row, "死亡波持续时间 (秒):");
+            _deathDurationSlider = CreateSlider(row, 1, 5, _config.DeathDuration, OnDeathDurationChanged);
+            _deathDurationInput =
+                CreateInputField(row, _config.DeathDuration.ToString(), OnDeathDurationInputChanged);
         }
 
         private void BuildDeathWaveTypeSetting(GameObject parent)
         {
             if (_config == null) return;
 
-            var settingObj = new GameObject("DeathWaveTypeSetting", typeof(RectTransform));
-            settingObj.transform.SetParent(parent.transform, false);
-            var settingRect = settingObj.GetComponent<RectTransform>();
-            settingRect.sizeDelta = new(0, 50);
-
-            var label = new GameObject("Label", typeof(Text));
-            label.transform.SetParent(settingObj.transform, false);
-            var labelText = label.GetComponent<Text>();
-            labelText.text = "死亡波类型:";
-            labelText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            labelText.fontSize = 14;
-            labelText.color = Color.white;
-            labelText.alignment = TextAnchor.MiddleLeft;
-            var labelRect = label.GetComponent<RectTransform>();
-            labelRect.anchorMin = new(0, 0.5f);
-            labelRect.anchorMax = new(0.4f, 0.5f);
-            labelRect.pivot = new(0, 0.5f);
-            labelRect.anchoredPosition = Vector2.zero;
-            labelRect.sizeDelta = Vector2.zero;
-
-            var dropdownObj = new GameObject("Dropdown", typeof(Dropdown));
-            dropdownObj.transform.SetParent(settingObj.transform, false);
-            var dropdown = dropdownObj.GetComponent<Dropdown>();
+            var row = CreateSettingRow(parent, "DeathWaveTypeSetting");
+            CreateLabel(row, "死亡波类型:");
             var options = new List<string> { "默认" };
             options.AddRange(CustomWaveManager.GetAllCustomWaveNames());
-            dropdown.options = options.Select(o => new Dropdown.OptionData(o)).ToList();
             var currentIndex = string.IsNullOrEmpty(_config.DeathWaveType)
                 ? 0
                 : options.FindIndex(o => o.Equals(_config.DeathWaveType, StringComparison.OrdinalIgnoreCase));
             if (currentIndex < 0) currentIndex = 0;
-            dropdown.value = currentIndex;
-            dropdown.onValueChanged.AddListener(OnDeathWaveTypeChanged);
-            _deathWaveTypeDropdown = dropdown;
-
-            var dropdownRect = dropdownObj.GetComponent<RectTransform>();
-            dropdownRect.anchorMin = new(0.4f, 0.5f);
-            dropdownRect.anchorMax = new(1, 0.5f);
-            dropdownRect.pivot = new(0, 0.5f);
-            dropdownRect.anchoredPosition = new(10, 0);
-            dropdownRect.sizeDelta = new(0, 30);
+            _deathWaveTypeDropdown = CreateDropdown(row, options, currentIndex, OnDeathWaveTypeChanged);
         }
 
         private void BuildDefaultStrengthSetting(GameObject parent)
         {
             if (_config == null) return;
 
-            var settingObj = new GameObject("DefaultStrengthSetting", typeof(RectTransform));
-            settingObj.transform.SetParent(parent.transform, false);
-            var settingRect = settingObj.GetComponent<RectTransform>();
-            settingRect.sizeDelta = new(0, 50);
-
-            var label = new GameObject("Label", typeof(Text));
-            label.transform.SetParent(settingObj.transform, false);
-            var labelText = label.GetComponent<Text>();
-            labelText.text = "默认电流强度:";
-            labelText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            labelText.fontSize = 14;
-            labelText.color = Color.white;
-            labelText.alignment = TextAnchor.MiddleLeft;
-            var labelRect = label.GetComponent<RectTransform>();
-            labelRect.anchorMin = new(0, 0.5f);
-            labelRect.anchorMax = new(0.4f, 0.5f);
-            labelRect.pivot = new(0, 0.5f);
-            labelRect.anchoredPosition = Vector2.zero;
-            labelRect.sizeDelta = Vector2.zero;
-
-            var sliderObj = new GameObject("Slider", typeof(Slider));
-            sliderObj.transform.SetParent(settingObj.transform, false);
-            var slider = sliderObj.GetComponent<Slider>();
-            slider.minValue = 0;
-            slider.maxValue = 100;
-            slider.wholeNumbers = true;
-            slider.value = _config.DefaultStrength;
-            slider.onValueChanged.AddListener(OnDefaultStrengthChanged);
-            _defaultStrengthSlider = slider;
-
-            var sliderRect = sliderObj.GetComponent<RectTransform>();
-            sliderRect.anchorMin = new(0.4f, 0.5f);
-            sliderRect.anchorMax = new(0.85f, 0.5f);
-            sliderRect.pivot = new(0, 0.5f);
-            sliderRect.anchoredPosition = new(10, 0);
-            sliderRect.sizeDelta = new(0, 20);
-
-            var valueText = new GameObject("ValueText", typeof(Text));
-            valueText.transform.SetParent(settingObj.transform, false);
-            var valueTextComponent = valueText.GetComponent<Text>();
-            valueTextComponent.text = _config.DefaultStrength.ToString();
-            valueTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            valueTextComponent.fontSize = 14;
-            valueTextComponent.color = Color.white;
-            valueTextComponent.alignment = TextAnchor.MiddleCenter;
-            _defaultStrengthText = valueTextComponent;
-
-            var valueRect = valueText.GetComponent<RectTransform>();
-            valueRect.anchorMin = new(0.85f, 0.5f);
-            valueRect.anchorMax = new(1, 0.5f);
-            valueRect.pivot = new(0, 0.5f);
-            valueRect.anchoredPosition = new(10, 0);
-            valueRect.sizeDelta = new(0, 20);
+            var row = CreateSettingRow(parent, "DefaultStrengthSetting");
+            CreateLabel(row, "默认电流强度:");
+            _defaultStrengthSlider = CreateSlider(row, 0, 100, _config.DefaultStrength, OnDefaultStrengthChanged);
+            _defaultStrengthInput =
+                CreateInputField(row, _config.DefaultStrength.ToString(), OnDefaultStrengthInputChanged);
         }
 
-        private void BuildMaxStrengthSetting(GameObject parent)
-        {
-            if (_config == null) return;
-
-            var settingObj = new GameObject("MaxStrengthSetting", typeof(RectTransform));
-            settingObj.transform.SetParent(parent.transform, false);
-            var settingRect = settingObj.GetComponent<RectTransform>();
-            settingRect.sizeDelta = new(0, 50);
-
-            var label = new GameObject("Label", typeof(Text));
-            label.transform.SetParent(settingObj.transform, false);
-            var labelText = label.GetComponent<Text>();
-            labelText.text = "最大电流强度:";
-            labelText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            labelText.fontSize = 14;
-            labelText.color = Color.white;
-            labelText.alignment = TextAnchor.MiddleLeft;
-            var labelRect = label.GetComponent<RectTransform>();
-            labelRect.anchorMin = new(0, 0.5f);
-            labelRect.anchorMax = new(0.4f, 0.5f);
-            labelRect.pivot = new(0, 0.5f);
-            labelRect.anchoredPosition = Vector2.zero;
-            labelRect.sizeDelta = Vector2.zero;
-
-            var sliderObj = new GameObject("Slider", typeof(Slider));
-            sliderObj.transform.SetParent(settingObj.transform, false);
-            var slider = sliderObj.GetComponent<Slider>();
-            slider.minValue = 0;
-            slider.maxValue = 100;
-            slider.wholeNumbers = true;
-            slider.value = _config.MaxStrength;
-            slider.onValueChanged.AddListener(OnMaxStrengthChanged);
-            _maxStrengthSlider = slider;
-
-            var sliderRect = sliderObj.GetComponent<RectTransform>();
-            sliderRect.anchorMin = new(0.4f, 0.5f);
-            sliderRect.anchorMax = new(0.85f, 0.5f);
-            sliderRect.pivot = new(0, 0.5f);
-            sliderRect.anchoredPosition = new(10, 0);
-            sliderRect.sizeDelta = new(0, 20);
-
-            var valueText = new GameObject("ValueText", typeof(Text));
-            valueText.transform.SetParent(settingObj.transform, false);
-            var valueTextComponent = valueText.GetComponent<Text>();
-            valueTextComponent.text = _config.MaxStrength.ToString();
-            valueTextComponent.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            valueTextComponent.fontSize = 14;
-            valueTextComponent.color = Color.white;
-            valueTextComponent.alignment = TextAnchor.MiddleCenter;
-            _maxStrengthText = valueTextComponent;
-
-            var valueRect = valueText.GetComponent<RectTransform>();
-            valueRect.anchorMin = new(0.85f, 0.5f);
-            valueRect.anchorMax = new(1, 0.5f);
-            valueRect.pivot = new(0, 0.5f);
-            valueRect.anchoredPosition = new(10, 0);
-            valueRect.sizeDelta = new(0, 20);
-        }
 
         private void BuildCloseButton()
         {
@@ -577,8 +580,21 @@ namespace Duckov_DGLab.MonoBehaviours
             if (_config == null) return;
             var intValue = (int)value;
             _config.HurtDuration = intValue;
-            if (_hurtDurationText != null) _hurtDurationText.text = intValue.ToString();
+            if (_hurtDurationInput != null) _hurtDurationInput.text = intValue.ToString();
             SaveConfig();
+        }
+
+        private void OnHurtDurationInputChanged(string value)
+        {
+            if (_config == null || string.IsNullOrEmpty(value)) return;
+            if (int.TryParse(value, out var intValue))
+            {
+                intValue = Mathf.Clamp(intValue, 1, 5);
+                _config.HurtDuration = intValue;
+                if (_hurtDurationSlider != null) _hurtDurationSlider.value = intValue;
+                if (_hurtDurationInput != null) _hurtDurationInput.text = intValue.ToString();
+                SaveConfig();
+            }
         }
 
         private void OnHurtWaveTypeChanged(int index)
@@ -596,8 +612,21 @@ namespace Duckov_DGLab.MonoBehaviours
             if (_config == null) return;
             var intValue = (int)value;
             _config.DeathDuration = intValue;
-            if (_deathDurationText != null) _deathDurationText.text = intValue.ToString();
+            if (_deathDurationInput != null) _deathDurationInput.text = intValue.ToString();
             SaveConfig();
+        }
+
+        private void OnDeathDurationInputChanged(string value)
+        {
+            if (_config == null || string.IsNullOrEmpty(value)) return;
+            if (int.TryParse(value, out var intValue))
+            {
+                intValue = Mathf.Clamp(intValue, 1, 5);
+                _config.DeathDuration = intValue;
+                if (_deathDurationSlider != null) _deathDurationSlider.value = intValue;
+                if (_deathDurationInput != null) _deathDurationInput.text = intValue.ToString();
+                SaveConfig();
+            }
         }
 
         private void OnDeathWaveTypeChanged(int index)
@@ -615,17 +644,21 @@ namespace Duckov_DGLab.MonoBehaviours
             if (_config == null) return;
             var intValue = (int)value;
             _config.DefaultStrength = intValue;
-            if (_defaultStrengthText != null) _defaultStrengthText.text = intValue.ToString();
+            if (_defaultStrengthInput != null) _defaultStrengthInput.text = intValue.ToString();
             SaveConfig();
         }
 
-        private void OnMaxStrengthChanged(float value)
+        private void OnDefaultStrengthInputChanged(string value)
         {
-            if (_config == null) return;
-            var intValue = (int)value;
-            _config.MaxStrength = intValue;
-            if (_maxStrengthText != null) _maxStrengthText.text = intValue.ToString();
-            SaveConfig();
+            if (_config == null || string.IsNullOrEmpty(value)) return;
+            if (int.TryParse(value, out var intValue))
+            {
+                intValue = Mathf.Clamp(intValue, 0, 100);
+                _config.DefaultStrength = intValue;
+                if (_defaultStrengthSlider != null) _defaultStrengthSlider.value = intValue;
+                if (_defaultStrengthInput != null) _defaultStrengthInput.text = intValue.ToString();
+                SaveConfig();
+            }
         }
 
         private void SaveConfig()
@@ -647,9 +680,8 @@ namespace Duckov_DGLab.MonoBehaviours
             foreach (KeyCode keyCode in Enum.GetValues(typeof(KeyCode)))
                 if (Input.GetKeyDown(keyCode))
                 {
-                    if (keyCode == KeyCode.Mouse0 || keyCode == KeyCode.Mouse1 || keyCode == KeyCode.Mouse2 ||
-                        keyCode == KeyCode.Mouse3 || keyCode == KeyCode.Mouse4 || keyCode == KeyCode.Mouse5 ||
-                        keyCode == KeyCode.Mouse6)
+                    if (keyCode is KeyCode.Mouse0 or KeyCode.Mouse1 or KeyCode.Mouse2 or KeyCode.Mouse3
+                        or KeyCode.Mouse4 or KeyCode.Mouse5 or KeyCode.Mouse6)
                         continue;
 
                     _toggleKey = keyCode;
